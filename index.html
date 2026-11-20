@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VOXEL WILDS — 方塊荒野 3D (Three.js)</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+        }
+      }
+    </script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #6eb5ff;
+        color: #f4f7ff;
+        font-family: 'Noto Sans TC', 'Microsoft JhengHei', ui-monospace, monospace;
+      }
+      #viewport {
+        position: fixed;
+        inset: 0;
+      }
+      #viewport canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .hidden {
+        display: none !important;
+      }
+
+      /* Crosshair */
+      #crosshair {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 18px;
+        height: 18px;
+        margin: -9px 0 0 -9px;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #crosshair::before,
+      #crosshair::after {
+        content: '';
+        position: absolute;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+      }
+      #crosshair::before {
+        top: 8px;
+        left: 2px;
+        width: 14px;
+        height: 2px;
+      }
+      #crosshair::after {
+        left: 8px;
+        top: 2px;
+        width: 2px;
+        height: 14px;
+      }
+
+      /* Quest Progression Tracker (Top Left) */
+      #quest-box {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        width: 248px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: rgba(14, 18, 26, 0.78);
+        border: 2px solid rgba(255, 255, 255, 0.16);
+        backdrop-filter: blur(8px);
+        z-index: 10;
+        pointer-events: none;
+      }
+      #quest-box h3 {
+        font-size: 12px;
+        font-weight: 900;
+        color: #ffe066;
+        letter-spacing: 0.06em;
+        margin-bottom: 8px;
+      }
+      .q-step {
+        font-size: 12.5px;
+        color: #d6e2f5;
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .q-step.done {
+        color: #7dffb2;
+        text-decoration: line-through;
+        opacity: 0.8;
+      }
+
+      /* Action Feedback Toast */
+      #toast {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 7px 16px;
+        border-radius: 10px;
+        background: rgba(14, 18, 26, 0.88);
+        border: 2px solid #ffe066;
+        color: #fff4b8;
+        font-size: 13px;
+        font-weight: 800;
+        opacity: 0;
+        transition: opacity 0.18s ease;
+        pointer-events: none;
+        z-index: 12;
+      }
+      #toast.show {
+        opacity: 1;
+      }
+
+      /* Top Right Quick Buttons */
+      #top-actions {
+        position: fixed;
+        top: 14px;
+        right: 14px;
+        display: flex;
+        gap: 8px;
+        z-index: 12;
+      }
+      .pill-btn {
+        cursor: pointer;
+        padding: 7px 12px;
+        border-radius: 10px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        background: rgba(14, 18, 26, 0.8);
+        color: #f4f7ff;
+        font-size: 12px;
+        font-weight: 800;
+        font-family: inherit;
+      }
+      .pill-btn:hover {
+        background: rgba(34, 44, 62, 0.9);
+      }
+
+      /* Minecraft-Style Hotbar */
+      #hotbar-wrap {
+        position: fixed;
+        bottom: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        z-index: 11;
+      }
+      #held-label {
+        font-size: 12px;
+        font-weight: 800;
+        color: #fff4b8;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+      }
+      #hotbar {
+        display: flex;
+        gap: 4px;
+        padding: 5px;
+        border-radius: 10px;
+        background: rgba(16, 20, 28, 0.84);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+      }
+      .slot {
+        position: relative;
+        width: 52px;
+        height: 52px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 20px;
+      }
+      .slot.active {
+        border-color: #ffe066;
+        background: rgba(255, 224, 102, 0.2);
+        transform: translateY(-2px);
+      }
+      .slot .key {
+        position: absolute;
+        top: 2px;
+        left: 4px;
+        font-size: 9px;
+        color: #9bb0d4;
+      }
+      .slot .cnt {
+        position: absolute;
+        bottom: 2px;
+        right: 4px;
+        font-size: 11px;
+        font-weight: 900;
+        color: #ffffff;
+        text-shadow: 0 1px 3px #000;
+      }
+      .slot .name {
+        font-size: 9px;
+        color: #dce6f7;
+        margin-top: 1px;
+      }
+
+      /* Crafting Modal */
+      #craft-modal {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 12, 20, 0.65);
+        z-index: 20;
+      }
+      .craft-panel {
+        width: min(440px, 92vw);
+        padding: 22px;
+        border-radius: 16px;
+        background: #1a212e;
+        border: 2px solid rgba(255, 224, 102, 0.45);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+      }
+      .craft-panel h2 {
+        font-size: 18px;
+        color: #ffe066;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .recipe {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        margin-bottom: 8px;
+      }
+      .recipe-info strong {
+        display: block;
+        font-size: 14px;
+        color: #ffffff;
+      }
+      .recipe-info span {
+        font-size: 11.5px;
+        color: #a8bbd8;
+      }
+      .craft-btn {
+        cursor: pointer;
+        padding: 7px 14px;
+        border-radius: 8px;
+        border: none;
+        font-family: inherit;
+        font-weight: 900;
+        font-size: 12px;
+        background: #6ef096;
+        color: #0b1c12;
+      }
+      .craft-btn:disabled {
+        background: #3b4454;
+        color: #7d8ba3;
+        cursor: not-allowed;
+      }
+
+      /* Start Overlay */
+      #overlay-start {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: radial-gradient(circle at 50% 45%, rgba(18, 34, 48, 0.45), rgba(8, 14, 22, 0.84));
+        z-index: 25;
+      }
+      .start-panel {
+        width: min(540px, 94vw);
+        padding: 30px 26px;
+        border-radius: 20px;
+        text-align: center;
+        background: rgba(18, 24, 34, 0.92);
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 28px 70px rgba(0, 0, 0, 0.65);
+      }
+      .tag {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        color: #8effb4;
+        background: rgba(74, 232, 130, 0.16);
+        border: 1px solid rgba(94, 245, 148, 0.4);
+        margin-bottom: 10px;
+      }
+      .start-panel h1 {
+        font-size: clamp(32px, 5vw, 46px);
+        font-weight: 900;
+        color: #ffe066;
+        letter-spacing: 0.05em;
+      }
+      .start-panel p {
+        font-size: 14px;
+        line-height: 1.7;
+        color: #c2d2ec;
+        margin: 12px 0 18px;
+      }
+      .keys-hint {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px 14px;
+        font-size: 12px;
+        color: #d6e4fa;
+        margin-bottom: 22px;
+      }
+      .keys-hint kbd {
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        color: #fff;
+      }
+      .cta {
+        cursor: pointer;
+        padding: 13px 28px;
+        border: none;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 900;
+        font-family: inherit;
+        background: linear-gradient(135deg, #6ef096, #ffe066);
+        color: #0b1c12;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewport"></div>
+    <div id="crosshair" class="hidden"></div>
+    <div id="toast"></div>
+
+    <div id="quest-box" class="hidden">
+      <h3>🧭 生存冒險目標</h3>
+      <div class="q-step" id="q-wood">⬜ 1. 砍樹收集原木（對準樹幹按左鍵）</div>
+      <div class="q-step" id="q-sword">⬜ 2. 按 [C] 打開合成台製作【木劍】</div>
+      <div class="q-step" id="q-pig">⬜ 3. 裝備木劍擊敗草原上的【野豬】</div>
+    </div>
+
+    <div id="top-actions" class="hidden">
+      <button class="pill-btn" id="btn-craft">⚒ 合成台 [C]</button>
+      <button class="pill-btn" id="btn-mute">🔊 音效 [M]</button>
+    </div>
+
+    <div id="hotbar-wrap" class="hidden">
+      <div id="held-label">徒手</div>
+      <div id="hotbar"></div>
+    </div>
+
+    <div id="craft-modal" class="hidden">
+      <div class="craft-panel">
+        <h2>
+          <span>⚒ 合成工作台 (Crafting)</span>
+          <button class="pill-btn" id="btn-close-craft">關閉 [C / ESC]</button>
+        </h2>
+        <div class="recipe">
+          <div class="recipe-info">
+            <strong>🪵 橡木板 ×4</strong>
+            <span>需求：1 橡木原木</span>
+          </div>
+          <button class="craft-btn" data-recipe="planks">合成</button>
+        </div>
+        <div class="recipe">
+          <div class="recipe-info">
+            <strong>🥢 木棒 ×4</strong>
+            <span>需求：2 橡木板</span>
+          </div>
+          <button class="craft-btn" data-recipe="sticks">合成</button>
+        </div>
+        <div class="recipe">
+          <div class="recipe-info">
+            <strong>🗡️ 木劍 (Wooden Sword)</strong>
+            <span>需求：2 橡木板 ＋ 1 木棒（攻擊野豬 2 倍傷害！）</span>
+          </div>
+          <button class="craft-btn" data-recipe="sword">合成</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay-start">
+      <div class="start-panel">
+        <span class="tag">SINGLE-FILE MINECRAFT-INSPIRED VOXEL 3D • THREE.JS</span>
+        <h1>VOXEL WILDS</h1>
+        <p>
+          歡迎來到方塊荒野！自由探索程序生成的 3D 體素丘陵與橡木林。<br />
+          破壞方塊、砍伐樹木收集原木、打開合成台製作<strong>木劍</strong>，並揮劍狩獵漫步草原的方塊野豬！
+        </p>
+        <div class="keys-hint">
+          <span><kbd>WASD</kbd> 移動</span>
+          <span><kbd>Space</kbd> 跳躍</span>
+          <span><kbd>左鍵</kbd> 破壞方塊 / 揮劍攻擊</span>
+          <span><kbd>右鍵</kbd> 放置方塊</span>
+          <span><kbd>C</kbd> 開關合成台</span>
+          <span><kbd>1–7</kbd> / 滾輪 切換物品欄</span>
+        </div>
+        <button id="btn-start" class="cta" type="button">▶ 進入方塊世界</button>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from 'three';
+
+      // ============================================================
+      // 1. PROCEDURAL WEB AUDIO (Block Crunch, Wood Chop, Sword, Pig Oink)
+      // ============================================================
+      class VoxelAudio {
+        constructor() {
+          this.ctx = null;
+          this.master = null;
+          this.muted = false;
+        }
+        unlock() {
+          if (!this.ctx) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return;
+            this.ctx = new AC();
+            this.master = this.ctx.createGain();
+            this.master.gain.value = this.muted ? 0 : 0.3;
+            this.master.connect(this.ctx.destination);
+          }
+          if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        }
+        toggleMute() {
+          this.muted = !this.muted;
+          if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.3, this.ctx.currentTime, 0.03);
+          return this.muted;
+        }
+        _tone(f1, f2, dur, vol, type = 'square', delay = 0) {
+          if (!this.ctx || !this.master || this.muted) return;
+          const now = this.ctx.currentTime + delay;
+          const o = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          o.type = type;
+          o.frequency.setValueAtTime(f1, now);
+          if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), now + dur);
+          g.gain.setValueAtTime(0.0001, now);
+          g.gain.linearRampToValueAtTime(vol, now + 0.008);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+          o.connect(g); g.connect(this.master);
+          o.start(now); o.stop(now + dur + 0.02);
+        }
+        _noise(dur, vol, freq) {
+          if (!this.ctx || !this.master || this.muted) return;
+          const now = this.ctx.currentTime;
+          const n = Math.floor(this.ctx.sampleRate * dur);
+          const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+          const s = this.ctx.createBufferSource(); s.buffer = buf;
+          const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq;
+          const g = this.ctx.createGain();
+          g.gain.setValueAtTime(vol, now);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+          s.connect(f); f.connect(g); g.connect(this.master);
+          s.start(now);
+        }
+        playBreak(type) {
+          if (type === 'wood') { this._tone(190, 90, 0.1, 0.2, 'triangle'); this._noise(0.08, 0.18, 950); }
+          else if (type === 'stone') { this._tone(140, 65, 0.1, 0.22, 'sawtooth'); this._noise(0.09, 0.2, 1600); }
+          else { this._noise(0.11, 0.2, 720); this._tone(120, 60, 0.08, 0.14, 'triangle'); }
+        }
+        playPlace() { this._tone(260, 180, 0.07, 0.16, 'triangle'); }
+        playSwing() { this._noise(0.09, 0.15, 2400); this._tone(380, 160, 0.08, 0.1, 'triangle'); }
+        playPigHurt() {
+          this._tone(420, 620, 0.09, 0.18, 'sawtooth', 0);
+          this._tone(580, 290, 0.12, 0.16, 'sawtooth', 0.07);
+        }
+        playCraft() {
+          this._tone(523.25, 523.25, 0.1, 0.15, 'square', 0);
+          this._tone(783.99, 783.99, 0.18, 0.15, 'square', 0.08);
+        }
+        playVictory() {
+          [523.25, 659.25, 783.99, 1046.5].forEach((n, i) => this._tone(n, n, 0.28, 0.15, 'triangle', i * 0.08));
+        }
+      }
+      const audio = new VoxelAudio();
+
+      // ============================================================
+      // 2. PROCEDURAL 16x16 PIXEL-ART VOXEL TEXTURES
+      // ============================================================
+      function makePixelTex(drawFn) {
+        const c = document.createElement('canvas');
+        c.width = 16;
+        c.height = 16;
+        drawFn(c.getContext('2d'));
+        const t = new THREE.CanvasTexture(c);
+        t.magFilter = THREE.NearestFilter;
+        t.minFilter = THREE.NearestFilter;
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+      }
+
+      const noiseFill = (ctx, palette) => {
+        for (let y = 0; y < 16; y++) {
+          for (let x = 0; x < 16; x++) {
+            const idx = (Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1) * palette.length;
+            ctx.fillStyle = palette[Math.floor(idx)];
+            ctx.fillRect(x, y, 1, 1);
+          }
+        }
+      };
+
+      const texGrassTop = makePixelTex((ctx) => noiseFill(ctx, ['#4db848', '#5ec954', '#3da13d', '#67d45b']));
+      const texDirt = makePixelTex((ctx) => noiseFill(ctx, ['#7d5233', '#6b4328', '#8c5f3d', '#5c3820']));
+      const texGrassSide = makePixelTex((ctx) => {
+        noiseFill(ctx, ['#7d5233', '#6b4328', '#8c5f3d', '#5c3820']);
+        for (let x = 0; x < 16; x++) {
+          const drop = 3 + ((x * 7) % 3);
+          ctx.fillStyle = x % 2 === 0 ? '#4db848' : '#5ec954';
+          ctx.fillRect(x, 0, 1, drop);
+        }
+      });
+      const texStone = makePixelTex((ctx) => noiseFill(ctx, ['#7b808a', '#6b707a', '#8c919c', '#5e626b']));
+      const texWoodSide = makePixelTex((ctx) => {
+        for (let x = 0; x < 16; x++) {
+          ctx.fillStyle = x % 3 === 0 ? '#573921' : x % 2 === 0 ? '#6e492b' : '#7d5634';
+          ctx.fillRect(x, 0, 1, 16);
+        }
+        ctx.fillStyle = '#472d18';
+        ctx.fillRect(3, 4, 2, 5);
+        ctx.fillRect(11, 9, 2, 4);
+      });
+      const texWoodTop = makePixelTex((ctx) => {
+        ctx.fillStyle = '#5c3d24'; ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#c49862'; ctx.fillRect(2, 2, 12, 12);
+        ctx.fillStyle = '#a37846'; ctx.fillRect(4, 4, 8, 8);
+        ctx.fillStyle = '#c49862'; ctx.fillRect(6, 6, 4, 4);
+      });
+      const texLeaves = makePixelTex((ctx) => noiseFill(ctx, ['#2b7a38', '#389444', '#1f612b', '#4cb052']));
+      const texPlank = makePixelTex((ctx) => {
+        ctx.fillStyle = '#c79658'; ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = '#9e703a';
+        for (let y = 0; y < 16; y += 4) ctx.fillRect(0, y, 16, 1);
+        ctx.fillRect(7, 0, 1, 4); ctx.fillRect(12, 4, 1, 4); ctx.fillRect(4, 8, 1, 4); ctx.fillRect(10, 12, 1, 4);
+      });
+
+      const BLOCK = {
+        GRASS: 1,
+        DIRT: 2,
+        STONE: 3,
+        WOOD: 4,
+        LEAVES: 5,
+        PLANK: 6,
+      };
+
+      const BLOCK_MATS = {
+        [BLOCK.GRASS]: [
+          new THREE.MeshLambertMaterial({ map: texGrassSide }),
+          new THREE.MeshLambertMaterial({ map: texGrassSide }),
+          new THREE.MeshLambertMaterial({ map: texGrassTop }),
+          new THREE.MeshLambertMaterial({ map: texDirt }),
+          new THREE.MeshLambertMaterial({ map: texGrassSide }),
+          new THREE.MeshLambertMaterial({ map: texGrassSide }),
+        ],
+        [BLOCK.DIRT]: new THREE.MeshLambertMaterial({ map: texDirt }),
+        [BLOCK.STONE]: new THREE.MeshLambertMaterial({ map: texStone }),
+        [BLOCK.WOOD]: [
+          new THREE.MeshLambertMaterial({ map: texWoodSide }),
+          new THREE.MeshLambertMaterial({ map: texWoodSide }),
+          new THREE.MeshLambertMaterial({ map: texWoodTop }),
+          new THREE.MeshLambertMaterial({ map: texWoodTop }),
+          new THREE.MeshLambertMaterial({ map: texWoodSide }),
+          new THREE.MeshLambertMaterial({ map: texWoodSide }),
+        ],
+        [BLOCK.LEAVES]: new THREE.MeshLambertMaterial({ map: texLeaves }),
+        [BLOCK.PLANK]: new THREE.MeshLambertMaterial({ map: texPlank }),
+      };
+
+      const BLOCK_COLORS = {
+        [BLOCK.GRASS]: 0x5ec954,
+        [BLOCK.DIRT]: 0x7d5233,
+        [BLOCK.STONE]: 0x7b808a,
+        [BLOCK.WOOD]: 0x6e492b,
+        [BLOCK.LEAVES]: 0x389444,
+        [BLOCK.PLANK]: 0xc79658,
+      };
+
+      // ============================================================
+      // 3. THREE.JS SCENE, SKY & LIGHTING
+      // ============================================================
+      const viewport = document.getElementById('viewport');
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      viewport.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x7cc4ff);
+      scene.fog = new THREE.Fog(0x7cc4ff, 26, 68);
+
+      const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 120);
+      scene.add(camera);
+
+      const hemi = new THREE.HemisphereLight(0xeef8ff, 0x4f6b47, 0.9);
+      scene.add(hemi);
+      const sun = new THREE.DirectionalLight(0xfff6dd, 1.15);
+      sun.position.set(22, 36, 18);
+      scene.add(sun);
+
+      // Blocky Voxel Clouds overhead
+      const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+      for (let i = 0; i < 10; i++) {
+        const cm = new THREE.Mesh(new THREE.BoxGeometry(5 + (i % 3) * 3, 1.1, 3 + (i % 2) * 2), cloudMat);
+        cm.position.set(-22 + i * 5.2, 22 + (i % 2) * 2, -16 + Math.sin(i * 2.1) * 18);
+        scene.add(cm);
+      }
+
+      // ============================================================
+      // 4. VOXEL WORLD STORAGE & MESHING
+      // ============================================================
+      const WORLD_MIN = -16;
+      const WORLD_MAX = 16;
+      const voxelMap = new Map(); // "x,y,z" -> { type, mesh }
+      const blockMeshes = [];
+      const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+      const worldGroup = new THREE.Group();
+      scene.add(worldGroup);
+
+      const keyOf = (x, y, z) => `${x},${y},${z}`;
+      const getBlock = (x, y, z) => voxelMap.get(keyOf(x, y, z))?.type || 0;
+
+      function setBlock(x, y, z, type) {
+        const k = keyOf(x, y, z);
+        const existing = voxelMap.get(k);
+        if (existing) {
+          worldGroup.remove(existing.mesh);
+          const idx = blockMeshes.indexOf(existing.mesh);
+          if (idx !== -1) blockMeshes.splice(idx, 1);
+          voxelMap.delete(k);
+        }
+        if (type > 0) {
+          const mesh = new THREE.Mesh(unitBoxGeo, BLOCK_MATS[type]);
+          mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+          mesh.userData.voxel = { x, y, z, type };
+          worldGroup.add(mesh);
+          blockMeshes.push(mesh);
+          voxelMap.set(k, { type, mesh });
+        }
+      }
+
+      function terrainY(x, z) {
+        const h = Math.sin(x * 0.16) * 1.4 + Math.cos(z * 0.16) * 1.4 + Math.sin((x + z) * 0.09) * 1.1;
+        return Math.max(1, Math.round(h + 3));
+      }
+
+      function generateWorld() {
+        for (let x = WORLD_MIN; x <= WORLD_MAX; x++) {
+          for (let z = WORLD_MIN; z <= WORLD_MAX; z++) {
+            const topY = terrainY(x, z);
+            setBlock(x, topY, z, BLOCK.GRASS);
+            setBlock(x, topY - 1, z, BLOCK.DIRT);
+            setBlock(x, topY - 2, z, BLOCK.STONE);
+          }
+        }
+
+        // Plant 7 handcrafted Voxel Oak Trees!
+        const treeCoords = [
+          [-5, -4], [5, -5], [-8, 5], [7, 6], [0, -10], [-11, -9], [10, -2],
+        ];
+        for (const [tx, tz] of treeCoords) {
+          const base = terrainY(tx, tz);
+          for (let dy = 1; dy <= 4; dy++) setBlock(tx, base + dy, tz, BLOCK.WOOD);
+          for (let lx = -2; lx <= 2; lx++) {
+            for (let lz = -2; lz <= 2; lz++) {
+              for (let ly = 4; ly <= 6; ly++) {
+                if (ly === 6 && Math.abs(lx) + Math.abs(lz) > 1) continue;
+                if (Math.abs(lx) === 2 && Math.abs(lz) === 2 && ly === 5) continue;
+                if (lx === 0 && lz === 0 && ly === 4) continue;
+                setBlock(tx + lx, base + ly, tz + lz, BLOCK.LEAVES);
+              }
+            }
+          }
+        }
+      }
+      generateWorld();
+
+      // Block Selection Wireframe Box
+      const selBox = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(1.015, 1.015, 1.015)),
+        new THREE.LineBasicMaterial({ color: 0x111111 })
+      );
+      selBox.visible = false;
+      scene.add(selBox);
+
+      // ============================================================
+      // 5. FIRST-PERSON HELD ITEM (Hand / Wooden Sword / Block)
+      // ============================================================
+      const heldGroup = new THREE.Group();
+      heldGroup.position.set(0.42, -0.34, -0.62);
+      camera.add(heldGroup);
+
+      const handMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.16, 0.42),
+        new THREE.MeshLambertMaterial({ color: 0xf2c29b })
+      );
+      heldGroup.add(handMesh);
+
+      const swordGroup = new THREE.Group();
+      const swBlade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.56, 0.1), new THREE.MeshLambertMaterial({ color: 0xd4a46a }));
+      swBlade.position.set(0, 0.34, 0);
+      const swGuard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.08), new THREE.MeshLambertMaterial({ color: 0x6e4726 }));
+      swGuard.position.set(0, 0.06, 0);
+      const swHandle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.06), new THREE.MeshLambertMaterial({ color: 0x4f3219 }));
+      swHandle.position.set(0, -0.05, 0);
+      swordGroup.add(swBlade, swGuard, swHandle);
+      swordGroup.rotation.set(-0.35, -0.2, 0.15);
+      swordGroup.visible = false;
+      heldGroup.add(swordGroup);
+
+      let swingTimer = 0;
+
+      // ============================================================
+      // 6. ROAMING VOXEL PIGS (Articulated + Knockback + Drops)
+      // ============================================================
+      const pigs = [];
+      const pigHitMeshes = [];
+      const pigPink = new THREE.MeshLambertMaterial({ color: 0xf5a3b0 });
+      const pigSnout = new THREE.MeshLambertMaterial({ color: 0xe38494 });
+      const pigDark = new THREE.MeshLambertMaterial({ color: 0x222222 });
+
+      function spawnPig(x, z) {
+        const y = terrainY(Math.round(x), Math.round(z)) + 1;
+        const g = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.58, 1.08), pigPink.clone());
+        body.position.set(0, 0.62, 0);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.54, 0.56), pigPink.clone());
+        head.position.set(0, 0.78, 0.68);
+        const snout = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.14), pigSnout);
+        snout.position.set(0, 0.7, 0.98);
+        const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.04), pigDark);
+        eyeL.position.set(-0.16, 0.86, 0.96);
+        const eyeR = eyeL.clone(); eyeR.position.x = 0.16;
+
+        const legs = [];
+        for (const [lx, lz] of [[-0.22, -0.34], [0.22, -0.34], [-0.22, 0.34], [0.22, 0.34]]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.36, 0.2), pigPink.clone());
+          leg.position.set(lx, 0.18, lz);
+          g.add(leg);
+          legs.push(leg);
+        }
+        g.add(body, head, snout, eyeL, eyeR);
+        g.position.set(x, y, z);
+        scene.add(g);
+
+        const hitBox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.4), new THREE.MeshBasicMaterial({ visible: false }));
+        hitBox.position.set(0, 0.6, 0.15);
+        g.add(hitBox);
+
+        const pig = {
+          group: g,
+          bodyMesh: body,
+          headMesh: head,
+          legs,
+          hitBox,
+          x,
+          y,
+          z,
+          vx: 0,
+          vz: 0,
+          dir: Math.random() * Math.PI * 2,
+          aiTimer: 1 + Math.random() * 2,
+          hp: 6,
+          hurtTimer: 0,
+          alive: true,
+        };
+        hitBox.userData.pigRef = pig;
+        pigs.push(pig);
+        pigHitMeshes.push(hitBox);
+      }
+
+      spawnPig(3, 4);
+      spawnPig(-4, 6);
+      spawnPig(7, -1);
+      spawnPig(-7, -3);
+
+      // ============================================================
+      // 7. INVENTORY, HOTBAR, CRAFTING & QUEST TRACKER
+      // ============================================================
+      const SLOTS = [
+        { id: 'hand', icon: '✋', name: '徒手', count: 1, fixed: true },
+        { id: 'wood', icon: '🪵', name: '橡木原木', count: 0, blockType: BLOCK.WOOD },
+        { id: 'plank', icon: '🧱', name: '橡木板', count: 0, blockType: BLOCK.PLANK },
+        { id: 'stick', icon: '🥢', name: '木棒', count: 0 },
+        { id: 'sword', icon: '🗡️', name: '木劍', count: 0 },
+        { id: 'dirt', icon: '🟫', name: '泥土', count: 0, blockType: BLOCK.DIRT },
+        { id: 'stone', icon: '🪨', name: '石頭', count: 0, blockType: BLOCK.STONE },
+        { id: 'pork', icon: '🍖', name: '生豬排', count: 0 },
+      ];
+      let selectedSlot = 0;
+
+      const hotbarEl = document.getElementById('hotbar');
+      const heldLabelEl = document.getElementById('held-label');
+      const craftModal = document.getElementById('craft-modal');
+      const toastEl = document.getElementById('toast');
+      let toastTimer = 0;
+      const quests = { wood: false, sword: false, pig: false };
+
+      function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        toastTimer = 2.2;
+      }
+
+      function getItem(id) {
+        return SLOTS.find((s) => s.id === id);
+      }
+
+      function addItem(id, amt = 1) {
+        const s = getItem(id);
+        if (!s) return;
+        s.count += amt;
+        if (id === 'wood' && !quests.wood) {
+          quests.wood = true;
+          document.getElementById('q-wood').classList.add('done');
+          document.getElementById('q-wood').textContent = '✅ 1. 砍樹收集原木（完成！）';
+          showToast('獲得原木！按 [C] 打開合成台製作木劍！');
+        }
+        renderHotbar();
+        updateCraftButtons();
+      }
+
+      function renderHotbar() {
+        hotbarEl.innerHTML = '';
+        SLOTS.forEach((s, idx) => {
+          const el = document.createElement('div');
+          el.className = 'slot' + (idx === selectedSlot ? ' active' : '');
+          el.innerHTML = `<span class="key">${idx + 1}</span><span>${s.count > 0 || s.fixed ? s.icon : ''}</span>${!s.fixed && s.count > 0 ? `<span class="cnt">${s.count}</span>` : ''}<span class="name">${s.name}</span>`;
+          el.addEventListener('click', () => selectSlot(idx));
+          hotbarEl.appendChild(el);
+        });
+        const cur = SLOTS[selectedSlot];
+        heldLabelEl.textContent = cur.count > 0 || cur.fixed ? `${cur.icon} ${cur.name}` : `${cur.name}（空）`;
+        const holdingSword = cur.id === 'sword' && cur.count > 0;
+        swordGroup.visible = holdingSword;
+        handMesh.visible = !holdingSword;
+      }
+
+      function selectSlot(idx) {
+        selectedSlot = Math.max(0, Math.min(SLOTS.length - 1, idx));
+        renderHotbar();
+      }
+
+      function updateCraftButtons() {
+        const w = getItem('wood').count;
+        const p = getItem('plank').count;
+        const st = getItem('stick').count;
+        document.querySelector('[data-recipe="planks"]').disabled = w < 1;
+        document.querySelector('[data-recipe="sticks"]').disabled = p < 2;
+        document.querySelector('[data-recipe="sword"]').disabled = p < 2 || st < 1;
+      }
+
+      function toggleCrafting(force) {
+        const open = force !== undefined ? force : craftModal.classList.contains('hidden');
+        craftModal.classList.toggle('hidden', !open);
+        keys.clear();
+        if (open) {
+          document.exitPointerLock?.();
+          updateCraftButtons();
+        } else if (started) {
+          renderer.domElement.requestPointerLock?.();
+        }
+      }
+
+      document.querySelectorAll('[data-recipe]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          audio.unlock();
+          const r = btn.dataset.recipe;
+          if (r === 'planks' && getItem('wood').count >= 1) {
+            getItem('wood').count -= 1;
+            addItem('plank', 4);
+            audio.playCraft();
+            showToast('合成：橡木板 ×4');
+          } else if (r === 'sticks' && getItem('plank').count >= 2) {
+            getItem('plank').count -= 2;
+            addItem('stick', 4);
+            audio.playCraft();
+            showToast('合成：木棒 ×4');
+          } else if (r === 'sword' && getItem('plank').count >= 2 && getItem('stick').count >= 1) {
+            getItem('plank').count -= 2;
+            getItem('stick').count -= 1;
+            addItem('sword', 1);
+            selectSlot(4); // Auto-equip Wooden Sword!
+            audio.playCraft();
+            if (!quests.sword) {
+              quests.sword = true;
+              document.getElementById('q-sword').classList.add('done');
+              document.getElementById('q-sword').textContent = '✅ 2. 合成並裝備【木劍】（完成！）';
+            }
+            showToast('🗡️ 已合成並裝備【木劍】！去草原揮劍狩獵野豬吧！');
+            toggleCrafting(false);
+          }
+          renderHotbar();
+          updateCraftButtons();
+        });
+      });
+
+      document.getElementById('btn-craft').addEventListener('click', () => toggleCrafting());
+      document.getElementById('btn-close-craft').addEventListener('click', () => toggleCrafting(false));
+      const muteBtn = document.getElementById('btn-mute');
+      muteBtn.addEventListener('click', () => {
+        const m = audio.toggleMute();
+        muteBtn.textContent = m ? '🔇 靜音 [M]' : '🔊 音效 [M]';
+      });
+
+      // ============================================================
+      // 8. PARTICLES, RAYCAST INTERACTION & FPS PHYSICS
+      // ============================================================
+      const particles = [];
+      const partGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
+      function spawnDebris(x, y, z, color, count = 12) {
+        const mat = new THREE.MeshLambertMaterial({ color });
+        for (let i = 0; i < count; i++) {
+          const m = new THREE.Mesh(partGeo, mat);
+          m.position.set(x + (Math.random() - 0.5) * 0.5, y + (Math.random() - 0.5) * 0.5, z + (Math.random() - 0.5) * 0.5);
+          scene.add(m);
+          particles.push({
+            mesh: m,
+            vx: (Math.random() - 0.5) * 5,
+            vy: 2 + Math.random() * 4,
+            vz: (Math.random() - 0.5) * 5,
+            life: 0.55,
+          });
+        }
+      }
+
+      let started = false;
+      let yaw = 0;
+      let pitch = -0.08;
+      const pPos = new THREE.Vector3(0, terrainY(0, 0) + 2.6, 0);
+      let vy = 0;
+      let onGround = false;
+
+      const keys = new Set();
+      let dragLook = false, lastMX = 0, lastMY = 0;
+      const raycaster = new THREE.Raycaster();
+
+      function startGame() {
+        audio.unlock();
+        keys.clear();
+        started = true;
+        document.getElementById('overlay-start').classList.add('hidden');
+        document.getElementById('crosshair').classList.remove('hidden');
+        document.getElementById('quest-box').classList.remove('hidden');
+        document.getElementById('top-actions').classList.remove('hidden');
+        document.getElementById('hotbar-wrap').classList.remove('hidden');
+        renderHotbar();
+        renderer.domElement.requestPointerLock?.();
+      }
+      document.getElementById('btn-start').addEventListener('click', startGame);
+
+      window.addEventListener('keydown', (e) => {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+        if (!e.isComposing) keys.add(e.code);
+        if (!started) return;
+        if (e.code === 'KeyC') toggleCrafting();
+        else if (e.code === 'Escape' && !craftModal.classList.contains('hidden')) toggleCrafting(false);
+        else if (e.code === 'KeyM') muteBtn.click();
+        else if (e.code.startsWith('Digit')) {
+          const n = Number(e.code.replace('Digit', ''));
+          if (n >= 1 && n <= SLOTS.length) selectSlot(n - 1);
+        }
+      });
+      window.addEventListener('keyup', (e) => keys.delete(e.code));
+      window.addEventListener('blur', () => { keys.clear(); dragLook = false; });
+      window.addEventListener('compositionstart', () => keys.clear());
+      document.addEventListener('visibilitychange', () => { keys.clear(); dragLook = false; });
+      document.addEventListener('pointerlockchange', () => { keys.clear(); dragLook = false; });
+
+      window.addEventListener('wheel', (e) => {
+        if (!started || !craftModal.classList.contains('hidden')) return;
+        selectSlot((selectedSlot + (e.deltaY > 0 ? 1 : -1) + SLOTS.length) % SLOTS.length);
+      });
+
+      renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        if (!started || !craftModal.classList.contains('hidden')) return;
+        audio.unlock();
+        if (document.pointerLockElement !== renderer.domElement && e.button === 0) {
+          renderer.domElement.requestPointerLock?.();
+          dragLook = true; lastMX = e.clientX; lastMY = e.clientY;
+        }
+        if (e.button === 0) handlePrimaryAction();
+        else if (e.button === 2) handlePlaceBlock();
+      });
+      window.addEventListener('pointerup', () => { dragLook = false; });
+      window.addEventListener('mousemove', (e) => {
+        if (!started || !craftModal.classList.contains('hidden')) return;
+        if (document.pointerLockElement === renderer.domElement) {
+          yaw -= e.movementX * 0.0022;
+          pitch = Math.max(-1.42, Math.min(1.42, pitch - e.movementY * 0.0022));
+        } else if (dragLook) {
+          yaw -= (e.clientX - lastMX) * 0.004;
+          pitch = Math.max(-1.42, Math.min(1.42, pitch - (e.clientY - lastMY) * 0.004));
+          lastMX = e.clientX; lastMY = e.clientY;
+        }
+      });
+
+      function handlePrimaryAction() {
+        swingTimer = 0.22;
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+        // 1. Check Pig Hit First!
+        const livePigHits = raycaster.intersectObjects(pigHitMeshes.filter((m) => m.userData.pigRef.alive), false);
+        if (livePigHits.length > 0 && livePigHits[0].distance <= 4.6) {
+          const pig = livePigHits[0].object.userData.pigRef;
+          const holdingSword = SLOTS[selectedSlot].id === 'sword' && SLOTS[selectedSlot].count > 0;
+          const dmg = holdingSword ? 3 : 1;
+          pig.hp -= dmg;
+          pig.hurtTimer = 0.28;
+          const pushDir = new THREE.Vector3(pig.x - pPos.x, 0, pig.z - pPos.z).normalize();
+          pig.vx = pushDir.x * 7.5;
+          pig.vz = pushDir.z * 7.5;
+          audio.playPigHurt();
+          spawnDebris(pig.x, pig.y + 0.7, pig.z, 0xff7088, 10);
+
+          if (pig.hp <= 0) {
+            pig.alive = false;
+            scene.remove(pig.group);
+            spawnDebris(pig.x, pig.y + 0.7, pig.z, 0xf5a3b0, 18);
+            addItem('pork', 2);
+            if (!quests.pig) {
+              quests.pig = true;
+              document.getElementById('q-pig').classList.add('done');
+              document.getElementById('q-pig').textContent = '✅ 3. 狩獵方塊野豬（全部任務達成！）';
+              audio.playVictory();
+              showToast('🎉 擊敗野豬獲得【生豬排 ×2】！所有生存目標完成！');
+            } else {
+              showToast('🍖 獲得生豬排 ×2！');
+            }
+          } else {
+            showToast(holdingSword ? `🗡️ 木劍重擊野豬 -${dmg} HP！` : `徒手打擊 -1 HP（合成木劍傷害 3 倍！）`);
+          }
+          return;
+        }
+
+        // 2. Break Voxel Block
+        const bHits = raycaster.intersectObjects(blockMeshes, false);
+        if (bHits.length > 0 && bHits[0].distance <= 5.5) {
+          const { x, y, z, type } = bHits[0].object.userData.voxel;
+          if (y <= 0) return; // Keep bedrock floor
+          setBlock(x, y, z, 0);
+          spawnDebris(x + 0.5, y + 0.5, z + 0.5, BLOCK_COLORS[type] || 0xffffff, 12);
+          if (type === BLOCK.WOOD) { audio.playBreak('wood'); addItem('wood', 1); }
+          else if (type === BLOCK.STONE) { audio.playBreak('stone'); addItem('stone', 1); }
+          else if (type === BLOCK.PLANK) { audio.playBreak('wood'); addItem('plank', 1); }
+          else if (type === BLOCK.GRASS || type === BLOCK.DIRT) { audio.playBreak('dirt'); addItem('dirt', 1); }
+          else { audio.playBreak('dirt'); }
+        } else {
+          audio.playSwing();
+        }
+      }
+
+      function handlePlaceBlock() {
+        const cur = SLOTS[selectedSlot];
+        if (!cur.blockType || cur.count <= 0) return;
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const hits = raycaster.intersectObjects(blockMeshes, false);
+        if (hits.length > 0 && hits[0].distance <= 5.5) {
+          const { x, y, z } = hits[0].object.userData.voxel;
+          const n = hits[0].face.normal;
+          const nx = x + Math.round(n.x);
+          const ny = y + Math.round(n.y);
+          const nz = z + Math.round(n.z);
+          // Prevent placing inside player's own body
+          if (Math.abs(nx + 0.5 - pPos.x) < 0.8 && Math.abs(nz + 0.5 - pPos.z) < 0.8 && ny >= Math.floor(pPos.y - 1.6) && ny <= Math.floor(pPos.y + 0.2)) {
+            return;
+          }
+          setBlock(nx, ny, nz, cur.blockType);
+          cur.count -= 1;
+          audio.playPlace();
+          renderHotbar();
+        }
+      }
+
+      function isSolidAt(x, y, z) {
+        return getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) > 0;
+      }
+
+      function collidesPlayer(px, py, pz) {
+        const r = 0.28;
+        for (const ox of [-r, r]) {
+          for (const oz of [-r, r]) {
+            for (const oy of [-1.55, -0.8, 0.1]) {
+              if (isSolidAt(px + ox, py + oy, pz + oz)) return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // ============================================================
+      // 9. MAIN LOOP
+      // ============================================================
+      let lastTime = performance.now();
+      let elapsed = 0;
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+        elapsed += dt;
+
+        if (toastTimer > 0) {
+          toastTimer -= dt;
+          if (toastTimer <= 0) toastEl.classList.remove('show');
+        }
+
+        // Update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const pt = particles[i];
+          pt.life -= dt;
+          if (pt.life <= 0) { scene.remove(pt.mesh); particles.splice(i, 1); }
+          else {
+            pt.vy -= 14 * dt;
+            pt.mesh.position.x += pt.vx * dt;
+            pt.mesh.position.y += pt.vy * dt;
+            pt.mesh.position.z += pt.vz * dt;
+            pt.mesh.scale.setScalar(pt.life * 1.8);
+          }
+        }
+
+        // Update roaming pigs
+        for (const pig of pigs) {
+          if (!pig.alive) continue;
+          if (pig.hurtTimer > 0) {
+            pig.hurtTimer -= dt;
+            const flash = pig.hurtTimer > 0 ? 0xff4455 : 0xf5a3b0;
+            pig.bodyMesh.material.color.setHex(flash);
+            pig.headMesh.material.color.setHex(flash);
+          }
+          pig.aiTimer -= dt;
+          if (pig.aiTimer <= 0) {
+            pig.aiTimer = 1.6 + Math.random() * 2.4;
+            pig.dir += (Math.random() - 0.5) * 2.4;
+          }
+          const sp = 1.45;
+          pig.vx += (Math.sin(pig.dir) * sp - pig.vx) * Math.min(1, dt * 4);
+          pig.vz += (Math.cos(pig.dir) * sp - pig.vz) * Math.min(1, dt * 4);
+          const nx = Math.max(WORLD_MIN + 2, Math.min(WORLD_MAX - 2, pig.x + pig.vx * dt));
+          const nz = Math.max(WORLD_MIN + 2, Math.min(WORLD_MAX - 2, pig.z + pig.vz * dt));
+          // Find surface Y at pig position
+          let sy = 1;
+          for (let y = 12; y >= 0; y--) {
+            if (getBlock(Math.floor(nx), y, Math.floor(nz)) > 0) { sy = y + 1; break; }
+          }
+          if (Math.abs(sy - pig.y) <= 1.2) {
+            pig.x = nx; pig.z = nz; pig.y += (sy - pig.y) * Math.min(1, dt * 12);
+          } else {
+            pig.dir += Math.PI * 0.7;
+          }
+          pig.group.position.set(pig.x, pig.y, pig.z);
+          pig.group.rotation.y = Math.atan2(pig.vx, pig.vz);
+          const walk = Math.sin(elapsed * 8) * 0.4;
+          pig.legs[0].rotation.x = walk; pig.legs[3].rotation.x = walk;
+          pig.legs[1].rotation.x = -walk; pig.legs[2].rotation.x = -walk;
+        }
+
+        if (!started) {
+          camera.position.set(Math.sin(elapsed * 0.2) * 14, 11, Math.cos(elapsed * 0.2) * 14);
+          camera.lookAt(0, 4, 0);
+          renderer.render(scene, camera);
+          return;
+        }
+
+        // Player Movement & Voxel Collision
+        if (craftModal.classList.contains('hidden')) {
+          const fwd = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+          const strafe = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+          const speed = 5.4;
+          if (fwd !== 0 || strafe !== 0) {
+            const len = Math.hypot(fwd, strafe);
+            const nf = fwd / len, ns = strafe / len;
+            const sinY = Math.sin(yaw), cosY = Math.cos(yaw);
+            const dx = (-sinY * nf + cosY * ns) * speed * dt;
+            const dz = (-cosY * nf - sinY * ns) * speed * dt;
+            if (!collidesPlayer(pPos.x + dx, pPos.y, pPos.z)) pPos.x += dx;
+            if (!collidesPlayer(pPos.x, pPos.y, pPos.z + dz)) pPos.z += dz;
+            pPos.x = Math.max(WORLD_MIN + 1, Math.min(WORLD_MAX, pPos.x));
+            pPos.z = Math.max(WORLD_MIN + 1, Math.min(WORLD_MAX, pPos.z));
+          }
+          if (keys.has('Space') && onGround) {
+            vy = 7.4;
+            onGround = false;
+          }
+        }
+
+        vy -= 19.5 * dt;
+        const nextY = pPos.y + vy * dt;
+        if (collidesPlayer(pPos.x, nextY, pPos.z)) {
+          if (vy < 0) onGround = true;
+          vy = 0;
+        } else {
+          pPos.y = nextY;
+          onGround = false;
+        }
+        if (pPos.y < -8) { pPos.set(0, 10, 0); vy = 0; }
+
+        camera.position.copy(pPos);
+        camera.rotation.set(pitch, yaw, 0, 'YXZ');
+
+        // Held item bob & swing animation
+        if (swingTimer > 0) {
+          swingTimer = Math.max(0, swingTimer - dt);
+          const s = Math.sin((swingTimer / 0.22) * Math.PI);
+          heldGroup.position.set(0.42 - s * 0.14, -0.34 + s * 0.08, -0.62 - s * 0.16);
+          heldGroup.rotation.set(-s * 1.15, s * 0.4, s * 0.3);
+        } else {
+          heldGroup.position.set(0.42, -0.34 + Math.sin(elapsed * 4) * 0.012, -0.62);
+          heldGroup.rotation.set(0, 0, 0);
+        }
+
+        // Highlight targeted voxel block
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const hits = raycaster.intersectObjects(blockMeshes, false);
+        if (hits.length > 0 && hits[0].distance <= 5.5) {
+          selBox.visible = true;
+          selBox.position.copy(hits[0].object.position);
+        } else {
+          selBox.visible = false;
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>
